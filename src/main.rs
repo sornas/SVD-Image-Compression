@@ -7,18 +7,18 @@ use std::fs::File;
 fn main() {
     setup_logger();
 
-    info!("Decoding image");
+    debug!("Decoding image");
     let decoder = png::Decoder::new(File::open("res/cows800.png").unwrap());
     let (info, mut reader) = decoder.read_info().unwrap();
     debug!("{:?}", info);
 
-    info!("Creating buffer");
+    debug!("Creating buffer");
     let mut buf = vec![0; info.buffer_size()];
 
-    info!("Reading frame");
+    debug!("Reading frame");
     reader.next_frame(&mut buf).unwrap();
 
-    info!("Creating matrixes");
+    debug!("Creating matrixes");
     let mut mats = [
         DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
         DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
@@ -34,7 +34,7 @@ fn main() {
         }
     }
 
-    info!("Factorizing matrixes");
+    debug!("Factorizing matrixes");
     let svds: Vec<_> = mats.iter().enumerate().map(|(i, m)| {
         debug!("Factorizing {}", i);
         SVD::new(m.clone(), true, true)
@@ -42,7 +42,7 @@ fn main() {
 
     let rank = 100;
 
-    info!("Compressing matrixes");
+    debug!("Compressing matrixes");
     let compressed: Vec<_> = svds.into_iter().enumerate().map(|(i, mut m)| {
         debug!("Compressing {}", i);
 
@@ -61,22 +61,26 @@ fn main() {
         u * sigma * v
     }).collect();
 
-    info!("Creating output file");
+    debug!("Merging compressed matrixes");
+    let mut data = Vec::new();
+    for i in 0..compressed[0].len() {
+        data.push(compressed[0][i].round() as u8);
+        data.push(compressed[1][i].round() as u8);
+        data.push(compressed[2][i].round() as u8);
+    }
+
+    debug!("Creating output file");
     let path = Path::new("out.png");
     let file = File::create(path).unwrap();
     let w = std::io::BufWriter::new(file);
 
-    info!("Preparing encoder");
+    debug!("Preparing encoder");
     let mut encoder = png::Encoder::new(w, info.width, info.height);
     encoder.set_color(info.color_type);
     encoder.set_depth(info.bit_depth);
 
-    info!("Encoding and saving image");
+    debug!("Encoding and saving image");
     let mut writer = encoder.write_header().unwrap();
-    let mut data = Vec::new();
-    // for pixel in mat.into_iter() {
-    //     data.extend(pixel.iter());
-    // }
     writer.write_image_data(&data).unwrap();
 }
 
