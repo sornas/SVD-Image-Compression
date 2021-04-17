@@ -1,5 +1,5 @@
 use log::*;
-use nalgebra::base::DMatrix;
+use nalgebra::base::{DMatrix, Matrix};
 use nalgebra::linalg::SVD;
 use std::path::Path;
 use std::fs::File;
@@ -35,7 +35,31 @@ fn main() {
     }
 
     info!("Factorizing matrixes");
-    let svds: Vec<_> = mats.iter().map(|m| SVD::new(m.clone(), true, true)).collect();
+    let svds: Vec<_> = mats.iter().enumerate().map(|(i, m)| {
+        debug!("Factorizing {}", i);
+        SVD::new(m.clone(), true, true)
+    }).collect();
+
+    let rank = 100;
+
+    info!("Compressing matrixes");
+    let compressed: Vec<_> = svds.into_iter().enumerate().map(|(i, mut m)| {
+        debug!("Compressing {}", i);
+
+        let u = m.u.take().map(|u| {
+            let r = u.nrows();
+            u.resize(r, rank, 0.0)
+        }).unwrap();
+        
+        let sigma = Matrix::from_diagonal(&m.singular_values.resize_vertically(rank, 0.0));
+
+        let v = m.v_t.take().map(|v| {
+            let c = v.ncols();
+            v.resize(rank, c, 0.0)
+        }).unwrap();
+
+        u * sigma * v
+    }).collect();
 
     info!("Creating output file");
     let path = Path::new("out.png");
