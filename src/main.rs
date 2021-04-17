@@ -1,5 +1,6 @@
 use log::*;
 use nalgebra::base::DMatrix;
+use nalgebra::linalg::SVD;
 use std::path::Path;
 use std::fs::File;
 
@@ -7,7 +8,7 @@ fn main() {
     setup_logger();
 
     info!("Decoding image");
-    let decoder = png::Decoder::new(File::open("res/cows.png").unwrap());
+    let decoder = png::Decoder::new(File::open("res/cows800.png").unwrap());
     let (info, mut reader) = decoder.read_info().unwrap();
     debug!("{:?}", info);
 
@@ -17,15 +18,24 @@ fn main() {
     info!("Reading frame");
     reader.next_frame(&mut buf).unwrap();
 
-    info!("Creating matrix");
-    let mut mat = DMatrix::from_element(info.width as usize, info.height as usize, [0, 0, 0]);
+    info!("Creating matrixes");
+    let mut mats = [
+        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
+        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
+        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
+    ];
     let mut pixels = buf.chunks_exact(3);
     for y in 0..info.height {
         for x in 0..info.width {
             let pixels = pixels.next().unwrap();
-            mat[(x as usize, y as usize)] = [pixels[0], pixels[1], pixels[2]];
+            for i in 0..3 {
+                mats[i][(x as usize, y as usize)] = pixels[i] as f64;
+            }
         }
     }
+
+    info!("Factorizing matrixes");
+    let svds: Vec<_> = mats.iter().map(|m| SVD::new(m.clone(), true, true)).collect();
 
     info!("Creating output file");
     let path = Path::new("out.png");
@@ -40,9 +50,9 @@ fn main() {
     info!("Encoding and saving image");
     let mut writer = encoder.write_header().unwrap();
     let mut data = Vec::new();
-    for pixel in mat.into_iter() {
-        data.extend(pixel.iter());
-    }
+    // for pixel in mat.into_iter() {
+    //     data.extend(pixel.iter());
+    // }
     writer.write_image_data(&data).unwrap();
 }
 
