@@ -11,3 +11,8 @@ edition = "2018"
 nalgebra = "0.26"
 png = "0.16"
 rayon = "1"
+
+chrono = "0.4"
+colored = "2"
+fern = "0.6"
+log = "0.4"
