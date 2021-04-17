@@ -3,6 +3,7 @@ use nalgebra::base::{DMatrix, Matrix};
 use nalgebra::linalg::SVD;
 use std::path::Path;
 use std::fs::File;
+use std::time::Instant;
 
 fn main() {
     setup_logger();
@@ -37,10 +38,14 @@ fn main() {
     debug!("Factorizing matrixes");
     let svds: Vec<_> = mats.iter().enumerate().map(|(i, m)| {
         debug!("Factorizing {}", i);
-        SVD::new(m.clone(), true, true)
+        let start = Instant::now();
+        let svd = SVD::new(m.clone(), true, true);
+        let end = Instant::now();
+        info!("Factorized in {:?}", end - start);
+        svd
     }).collect();
 
-    let rank = 100;
+    let rank = 50;
 
     debug!("Compressing matrixes");
     let compressed: Vec<_> = svds.into_iter().enumerate().map(|(i, mut m)| {
@@ -58,7 +63,11 @@ fn main() {
             v.resize(rank, c, 0.0)
         }).unwrap();
 
-        u * sigma * v
+        let start = Instant::now();
+        let compressed = u * sigma * v;
+        let end = Instant::now();
+        info!("Compressed in {:?}", end - start);
+        compressed
     }).collect();
 
     debug!("Merging compressed matrixes");
