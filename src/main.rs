@@ -1,6 +1,5 @@
 use log::*;
-use nalgebra::base::{DMatrix, Matrix};
-use nalgebra::linalg::SVD;
+use peroxide::fuga::LinearAlgebra;
 use std::path::Path;
 use std::fs::File;
 use std::time::Instant;
@@ -12,6 +11,8 @@ fn main() {
     let decoder = png::Decoder::new(File::open("res/cows800.png").unwrap());
     let (info, mut reader) = decoder.read_info().unwrap();
     debug!("{:?}", info);
+    let width = info.width as usize;
+    let height = info.height as usize;
 
     debug!("Creating buffer");
     let mut buf = vec![0; info.buffer_size()];
@@ -19,55 +20,73 @@ fn main() {
     debug!("Reading frame");
     reader.next_frame(&mut buf).unwrap();
 
-    debug!("Creating matrixes");
-    let mut mats = [
-        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
-        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
-        DMatrix::from_element(info.width as usize, info.height as usize, 0.0),
+    debug!("Extracting channels");
+    let mut channels = [
+        Vec::with_capacity(width * height),
+        Vec::with_capacity(width * height),
+        Vec::with_capacity(width * height),
     ];
     let mut pixels = buf.chunks_exact(3);
-    for y in 0..info.height {
-        for x in 0..info.width {
-            let pixels = pixels.next().unwrap();
-            for i in 0..3 {
-                mats[i][(x as usize, y as usize)] = pixels[i] as f64;
-            }
+    for _p in 0..width * height {
+        let pixels = pixels.next().unwrap();
+        for i in 0..3 {
+            channels[i].push(pixels[i] as f64);
         }
     }
+
+    let mats = channels.iter().map(|m| {
+        peroxide::fuga::matrix(m.clone(), width, height, peroxide::fuga::Row)
+    }).collect::<Vec<_>>();
 
     debug!("Factorizing matrixes");
     let svds: Vec<_> = mats.iter().enumerate().map(|(i, m)| {
         debug!("Factorizing {}", i);
         let start = Instant::now();
-        let svd = SVD::new(m.clone(), true, true);
+        let svd = m.svd();
         let end = Instant::now();
         info!("Factorized in {:?}", end - start);
         svd
     }).collect();
 
-    let rank = 50;
+    let rank = 500;
 
     debug!("Compressing matrixes");
-    let compressed: Vec<_> = svds.into_iter().enumerate().map(|(i, mut m)| {
+    let compressed: Vec<Vec<f64>> = svds.into_iter().enumerate().map(|(i, m)| {
         debug!("Compressing {}", i);
 
-        let u = m.u.take().map(|u| {
-            let r = u.nrows();
-            u.resize(r, rank, 0.0)
-        }).unwrap();
+        let u = {
+            let mut u = Vec::with_capacity(m.u.row * rank);
+            for y in 0..m.u.row {
+                for x in 0..rank {
+                    u.push(m.u[(x, y)]);
+                }
+            }
+            peroxide::fuga::matrix(u, m.u.row, rank, peroxide::fuga::Row)
+        };
         
-        let sigma = Matrix::from_diagonal(&m.singular_values.resize_vertically(rank, 0.0));
+        let s = {
+            let mut s = vec![0.0; m.u.row * m.vt.col];
+            for i in 0..m.s.len() {
+                s[i * m.s.len() + i] = m.s[i];
+            }
+            peroxide::fuga::matrix(s, m.u.row, m.vt.col, peroxide::fuga::Row)
+        };
 
-        let v = m.v_t.take().map(|v| {
-            let c = v.ncols();
-            v.resize(rank, c, 0.0)
-        }).unwrap();
+        let v = {
+            let mut v = Vec::with_capacity(rank * m.vt.col);
+            for y in 0..rank {
+                for x in 0..m.vt.col {
+                    v.push(m.vt[(x, y)]);
+                }
+            }
+            peroxide::fuga::matrix(v, rank, m.vt.col, peroxide::fuga::Row)
+        };
 
         let start = Instant::now();
-        let compressed = u * sigma * v;
+        let compressed = u * s * v;
         let end = Instant::now();
         info!("Compressed in {:?}", end - start);
-        compressed
+        compressed.into()
     }).collect();
 
     debug!("Merging compressed matrixes");

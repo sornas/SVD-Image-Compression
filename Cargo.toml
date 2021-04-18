@@ -8,7 +8,8 @@ edition = "2018"
 
 [dependencies]
 
-nalgebra = "0.26"
+blas = "0.20"
+peroxide = { version = "0.30", features = [ "O3" ] }
 png = "0.16"
 rayon = "1"
 
